@@ -6,6 +6,19 @@
  * semantics remain based on the original transmitter firmware.
  */
 
+// =================================================
+// ARM 操作模式选择：只能启用其中一种
+// =================================================
+
+#define ARM_MODE_BUTTON  //按键切换
+// #define ARM_MODE_SLIDE  //两档开关切换
+
+#if defined(ARM_MODE_BUTTON) && defined(ARM_MODE_SLIDE)
+  #error "ARM_MODE_BUTTON and ARM_MODE_SLIDE cannot both be enabled!"
+#elif !defined(ARM_MODE_BUTTON) && !defined(ARM_MODE_SLIDE)
+  #error "Please enable one ARM mode!"
+#endif
+
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_ADS1X15.h>
@@ -373,20 +386,47 @@ void getDigitalInputs(){
             }
         }
     }
+//
+// =================================================
+// ARM 操作模式
+// =================================================
 
+#if defined(ARM_MODE_BUTTON)
+
+    // ===== 按键模式：短按切换 ARM =====
     static uint32_t aux1PressedTime = 0;
+
     if (digitalRead(DIGITAL_PIN_SWITCH_ARM) == LOW) {
-        if (aux1PressedTime == 0) aux1PressedTime = millis(); 
+        if (aux1PressedTime == 0)
+            aux1PressedTime = millis();
     } else {
-        if (aux1PressedTime > 0) {  
+        if (aux1PressedTime > 0) {
             unsigned long pressDuration = millis() - aux1PressedTime;
             aux1PressedTime = 0;
-            if (pressDuration < transmitter.globalSettings.auxLongPress && pressDuration >= BTN_SHORT_PRESS) {
+
+            if (pressDuration >= transmitter.globalSettings.auxLongPress) {
+                if (!ARMED) {
+                    // 保留原来的长按处理位置
+                }
+            } else if (pressDuration >= BTN_SHORT_PRESS) {
                 stickValues[SW1] = !stickValues[SW1];
                 ARMED = stickValues[SW1];
             }
         }
     }
+
+#elif defined(ARM_MODE_SLIDE)
+
+    // ===== 两档滑动开关模式：低电平 ARM，高电平 DISARM =====
+    if (digitalRead(DIGITAL_PIN_SWITCH_ARM) == LOW) {
+        stickValues[SW1] = true;
+        ARMED = true;
+    } else {
+        stickValues[SW1] = false;
+        ARMED = false;
+    }
+
+#endif
 
     static uint32_t aux2PressedTime = 0;
     if (digitalRead(DIGITAL_PIN_SWITCH_AUX2) == LOW) {
